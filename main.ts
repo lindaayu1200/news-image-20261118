@@ -1,5 +1,11 @@
-// Copies the finished news poster into the grader's output directory.
-// Node 22, standard library only. MAKEFUN_OUTPUT_DIR stands in for /output locally.
+// main.ts — validate the finished news poster and hand it to the grader.
+//
+// On every run this script:
+//   1. confirms entry.png exists and is at most 1 MiB (1048576 bytes),
+//   2. confirms its first eight bytes are the PNG signature, and
+//   3. copies it to $MAKEFUN_OUTPUT_DIR/entry.png (default: /output/entry.png).
+//
+// Node 22 standard library only; no third-party dependencies.
 
 import { closeSync, copyFileSync, mkdirSync, openSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,3 +54,5 @@ if (
 
 mkdirSync(outputDir, { recursive: true });
 copyFileSync(source, join(outputDir, 'entry.png'));
+
+console.log(`main.ts: validated entry.png (${size} bytes) and copied it to ${join(outputDir, 'entry.png')}`);
