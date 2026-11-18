@@ -26,10 +26,10 @@ let size: number;
 try {
   size = statSync(source).size;
 } catch {
-  fail(`entry.png does not exist or cannot be stat'ed at ${source.pathname}`);
+  fail(`cannot stat entry.png at ${source.pathname}`);
 }
 if (size > MAX_BYTES) {
-  fail(`entry.png is ${size} bytes, which exceeds the ${MAX_BYTES}-byte limit`);
+  fail(`entry.png is ${size} bytes (limit ${MAX_BYTES})`);
 }
 
 // Its first eight bytes must be the PNG signature.
@@ -43,16 +43,17 @@ try {
     closeSync(fd);
   }
 } catch {
-  fail(`entry.png exists but cannot be read at ${source.pathname}`);
+  fail(`cannot read entry.png at ${source.pathname}`);
 }
 if (
   bytesRead !== PNG_SIGNATURE.length ||
   !header.subarray(0, bytesRead).equals(PNG_SIGNATURE)
 ) {
-  fail('entry.png is not a valid PNG: the first 8 bytes are not the PNG signature');
+  fail('invalid PNG signature in entry.png');
 }
 
 mkdirSync(outputDir, { recursive: true });
+// Deliver the validated image to the grader's output directory.
 copyFileSync(source, join(outputDir, 'entry.png'));
 
 console.log(`main.ts: validated entry.png (${size} bytes) and copied it to ${join(outputDir, 'entry.png')}`);
