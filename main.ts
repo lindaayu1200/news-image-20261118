@@ -56,7 +56,9 @@ async function run(): Promise<void> {
     header.length !== PNG_SIGNATURE.length ||
     !PNG_SIGNATURE.every((byte, index) => header[index] === byte)
   ) {
-    fail(`entry.png does not begin with the ${PNG_SIGNATURE.length}-byte PNG signature`);
+    fail(
+      `entry.png does not begin with the ${PNG_SIGNATURE.length}-byte PNG signature; found ${Buffer.from(header).toString('hex')}`,
+    );
   }
 
   const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
