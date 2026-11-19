@@ -1,5 +1,7 @@
 // Validate the bundled PNG front page and stage it for the make.fun bounty.
 // Runs directly under Node 22's TypeScript support: node main.ts
+//
+// Checks: regular file <= 1 MiB, PNG signature, and 1024x1024 IHDR dimensions.
 
 import { copyFile, mkdir, open, stat } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
@@ -7,7 +9,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const MAX_BYTES = 1048576;
-const PNG_SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+const EXPECTED_WIDTH = 1024;
+const EXPECTED_HEIGHT = 1024;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const IHDR_TYPE = Buffer.from('IHDR', 'ascii');
+// Signature (8 bytes) + IHDR length (4), type (4) and width/height (4 + 4).
+const HEADER_BYTES = PNG_SIGNATURE.length + 16;
 
 function fail(message: string): never {
   console.error(`main.ts: ${message}`);
@@ -26,12 +33,12 @@ async function inspect(path: string): Promise<Stats> {
   }
 }
 
-async function readHeader(path: string): Promise<Uint8Array> {
+async function readHeader(path: string): Promise<Buffer> {
   const handle = await open(path, 'r');
   try {
-    const buffer = Buffer.alloc(PNG_SIGNATURE.length);
+    const buffer = Buffer.alloc(HEADER_BYTES);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    return new Uint8Array(buffer.buffer, buffer.byteOffset, bytesRead);
+    return buffer.subarray(0, bytesRead);
   } finally {
     await handle.close();
   }
@@ -52,12 +59,30 @@ async function run(): Promise<void> {
   }
 
   const header = await readHeader(entryPath);
-  if (
-    header.length !== PNG_SIGNATURE.length ||
-    !PNG_SIGNATURE.every((byte, index) => header[index] === byte)
-  ) {
+  const signature = header.subarray(0, PNG_SIGNATURE.length);
+  if (signature.length !== PNG_SIGNATURE.length || !signature.equals(PNG_SIGNATURE)) {
     fail(
-      `entry.png does not begin with the ${PNG_SIGNATURE.length}-byte PNG signature; found ${Buffer.from(header).toString('hex')}`,
+      `entry.png does not begin with the ${PNG_SIGNATURE.length}-byte PNG signature; found ${signature.toString('hex')}`,
+    );
+  }
+
+  if (header.length < HEADER_BYTES) {
+    fail(`entry.png is too short (${header.length} bytes) to contain a PNG IHDR header`);
+  }
+  if (header.readUInt32BE(PNG_SIGNATURE.length) < 13) {
+    fail('entry.png has an invalid IHDR chunk length');
+  }
+  if (
+    !header.subarray(PNG_SIGNATURE.length + 4, PNG_SIGNATURE.length + 8).equals(IHDR_TYPE)
+  ) {
+    fail('entry.png has no IHDR chunk after its PNG signature');
+  }
+
+  const width = header.readUInt32BE(PNG_SIGNATURE.length + 8);
+  const height = header.readUInt32BE(PNG_SIGNATURE.length + 12);
+  if (width !== EXPECTED_WIDTH || height !== EXPECTED_HEIGHT) {
+    fail(
+      `entry.png is ${width}x${height} pixels; expected ${EXPECTED_WIDTH}x${EXPECTED_HEIGHT}`,
     );
   }
 
