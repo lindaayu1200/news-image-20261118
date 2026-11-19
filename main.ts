@@ -2,7 +2,8 @@
 // Runs directly under Node 22's TypeScript support: node main.ts
 //
 // Checks: regular file <= 1 MiB, PNG signature, 1024x1024 IHDR with a valid
-// CRC, and a terminating IEND chunk; then copies entry.png byte-for-byte.
+// CRC and sane color type / bit depth, and a terminating IEND chunk; then
+// copies entry.png byte-for-byte.
 
 import { copyFile, mkdir, open, stat } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
@@ -15,6 +16,8 @@ const EXPECTED_HEIGHT = 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const IHDR_TYPE = Buffer.from('IHDR', 'ascii');
 const IHDR_DATA_BYTES = 13;
+const PNG_COLOR_TYPES = [0, 2, 3, 4, 6];
+const PNG_BIT_DEPTHS = [1, 2, 4, 8, 16];
 // The final 12 bytes of a PNG: length 0, type "IEND", CRC AE426082.
 const IEND_CHUNK = Buffer.from([
   0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
@@ -23,6 +26,9 @@ const IEND_CHUNK = Buffer.from([
 const LENGTH_OFFSET = PNG_SIGNATURE.length;
 const TYPE_OFFSET = LENGTH_OFFSET + 4;
 const IHDR_DATA_OFFSET = TYPE_OFFSET + 4;
+// IHDR data: width(4), height(4), bit depth(1), color type(1), then 3 more.
+const IHDR_BIT_DEPTH_OFFSET = IHDR_DATA_OFFSET + 8;
+const IHDR_COLOR_TYPE_OFFSET = IHDR_DATA_OFFSET + 9;
 const IHDR_CRC_OFFSET = IHDR_DATA_OFFSET + IHDR_DATA_BYTES;
 // Signature, IHDR length/type/data, and the IHDR CRC.
 const HEADER_BYTES = IHDR_CRC_OFFSET + 4;
@@ -118,6 +124,20 @@ async function run(): Promise<void> {
     );
   }
 
+  const bitDepth = header[IHDR_BIT_DEPTH_OFFSET]!;
+  if (!PNG_BIT_DEPTHS.includes(bitDepth)) {
+    fail(
+      `entry.png has IHDR bit depth ${bitDepth}; expected one of ${PNG_BIT_DEPTHS.join(', ')}`,
+    );
+  }
+
+  const colorType = header[IHDR_COLOR_TYPE_OFFSET]!;
+  if (!PNG_COLOR_TYPES.includes(colorType)) {
+    fail(
+      `entry.png has IHDR color type ${colorType}; expected one of ${PNG_COLOR_TYPES.join(', ')}`,
+    );
+  }
+
   const storedCrc = header.readUInt32BE(IHDR_CRC_OFFSET);
   const actualCrc = crc32(header, TYPE_OFFSET, IHDR_CRC_OFFSET);
   if (storedCrc !== actualCrc) {
@@ -145,7 +165,7 @@ async function run(): Promise<void> {
   }
 
   console.log(
-    `OK: The World Ledger (33 stories) — entry.png, 1024x1024 PNG, ${info.size} bytes, IHDR CRC + IEND verified; copied unchanged to ${destination}`,
+    `OK: The World Ledger (33 stories) — entry.png verified (1024x1024 PNG, ${info.size} bytes; IHDR CRC, color type, bit depth, IEND); copied unchanged to ${destination}`,
   );
 }
 
